@@ -60,7 +60,8 @@ const sessionInit: XRSessionInit = {
     'local-floor',      // Floor-level reference space
     'bounded-floor',    // Room-scale boundary
     'hand-tracking',    // Quest hand tracking
-    'layers',           // Composition layers
+    'layers',           // XRProjectionLayer + composition layers
+    'hit-test',         // Ray-vs-real-world hit testing (AR)
   ],
 };
 
@@ -68,6 +69,12 @@ const session = await xr.requestSession("immersive-vr", sessionInit);
 renderer.xr.setReferenceSpaceType("local-floor");
 renderer.xr.setSession(session);
 ```
+
+### Valid Feature Descriptors
+Only these strings are recognized in `optionalFeatures` / `requiredFeatures`:
+`anchors`, `bounded-floor`, `depth-sensing`, `dom-overlay`, `hand-tracking`, `hit-test`, `layers`, `light-estimation`, `local`, `local-floor`, `secondary-views`, `unbounded`, `viewer`.
+
+Unrecognized strings are silently ignored — they won't cause an error but they won't do anything either.
 
 ### Native Framebuffer Resolution (Anti-Pixelation)
 **Critical:** The default WebXR framebuffer is low-resolution. You MUST create an `XRWebGLLayer` with native scale factor to avoid pixelated rendering:
@@ -90,13 +97,18 @@ const onSessionStarted = (session: XRSession) => {
 Without this, Quest renders at a fraction of native resolution. This single change eliminates most "it looks blurry/pixelated" complaints.
 
 ### Adding Passthrough Later (If Needed)
-Passthrough in `immersive-vr` mode uses the `passthrough` optional feature:
-```typescript
-optionalFeatures: [..., 'passthrough']
-```
-This is the Quest-specific approach — the session starts opaque but passthrough can be enabled via XR layers. This is different from `immersive-ar` which starts transparent.
+Passthrough requires `immersive-ar`, not `immersive-vr`. There is no `'passthrough'` optional feature — that string is not part of the WebXR spec.
 
-**Note:** Implementing passthrough via layers in `immersive-vr` requires XRWebGLBinding and composition layers — significantly more complex than `immersive-ar` but gives you control over when passthrough is active.
+To enable passthrough:
+```typescript
+// Request an AR session — the device composites your render over the camera feed
+const session = await xr.requestSession("immersive-ar", {
+  optionalFeatures: ['local-floor', 'hand-tracking'],
+});
+// session.environmentBlendMode will be "alpha-blend" on Quest
+```
+
+In `immersive-ar`, framebuffer alpha controls camera blending: alpha=0 shows full passthrough, alpha=1 shows your render. You cannot switch between VR and AR mid-session — the mode is fixed at request time.
 
 ---
 
@@ -443,7 +455,7 @@ Scenes should:
 ### Passthrough as a Future Feature
 If you need passthrough later, implement it as:
 1. A separate "Enter AR" button (distinct from "Enter VR")
-2. Using `immersive-vr` + `passthrough` optional feature + XR composition layers
-3. OR using `immersive-ar` with a complete alpha management strategy tested on-device
+2. Using `immersive-ar` with a complete alpha management strategy tested on-device
+3. Every material and shader must output correct alpha values (alpha=0 → passthrough, alpha=1 → opaque render)
 
-Never bolt passthrough onto a working VR app without dedicated testing.
+There is no way to enable passthrough in an `immersive-vr` session. Never bolt passthrough onto a working VR app without dedicated on-device testing.
